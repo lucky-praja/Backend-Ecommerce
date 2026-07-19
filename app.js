@@ -1,3 +1,8 @@
+require("dotenv").config();
+
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
+
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -10,31 +15,49 @@ app.use(express.json());
 app.use(cors());
 
 // MongoDB Connection
+const PORT = process.env.PORT || 3000;
+console.log("MONGO_URI is:", process.env.MONGO_URI);
 mongoose
-  .connect("mongodb://127.0.0.1:27017/StudentMay")
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log(err));
+  .connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 10000,
+    family: 4,
+  })
+  .then(() => {
+    console.log("MongoDB Connected");
 
-// Schema
-const UserSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
+    app.listen(PORT, () => {
+      console.log(`Server Running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error(err);
+  });
+
+// User Schema
+const UserSchema = new mongoose.Schema(
+  {
+    username: {
+      type: String,
+      required: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+
+    password: {
+      type: String,
+      required: true,
+    },
   },
+  {
+    timestamps: true,
+  }
+);
 
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-  },
-
-  password: {
-    type: String,
-    required: true,
-  },
-});
-
-// Model
+// User Model
 const User = mongoose.model("User", UserSchema);
 
 // Home Route
@@ -47,26 +70,22 @@ app.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // Validation
     if (!username || !email || !password) {
-      return res.json({
+      return res.status(400).json({
         message: "All fields are required",
       });
     }
 
-    // Check Existing User
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
-      return res.json({
+      return res.status(400).json({
         message: "User already exists",
       });
     }
 
-    // Hash Password
     const hashPassword = await bcrypt.hash(password, 10);
 
-    // Create User
     const newUser = new User({
       username,
       email,
@@ -75,11 +94,11 @@ app.post("/register", async (req, res) => {
 
     await newUser.save();
 
-    res.json({
+    res.status(201).json({
       message: "User Created Successfully",
     });
   } catch (err) {
-    console.log(err);
+    console.error(err);
 
     res.status(500).json({
       message: "Server Error",
@@ -92,20 +111,21 @@ app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find User
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.json({
+      return res.status(404).json({
         message: "User Not Found",
       });
     }
 
-    // Compare Password
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!validPassword) {
-      return res.json({
+      return res.status(401).json({
         message: "Incorrect Password",
       });
     }
@@ -115,17 +135,10 @@ app.post("/login", async (req, res) => {
       username: user.username,
     });
   } catch (err) {
-    console.log(err);
+    console.error(err);
 
     res.status(500).json({
       message: "Server Error",
     });
   }
-});
-
-// Server
-const PORT = 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server Running at http://localhost:${PORT}`);
 });
